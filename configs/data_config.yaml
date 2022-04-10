@@ -1,0 +1,14 @@
+wav_dir: '/content/drive/MyDrive/jocko/audio'
+sample_rate: 16000 # Currentl only 16000 hertz supported
+max_wav_len: 16000 * 5 # ie: 5 seconds long
+# Audio features
+n_fft: 2048
+hop_length: 512
+win_length: 50
+metadata_path: '/content/drive/MyDrive/jocko/text/jocko_new.txt'
+dataset_split:  [180,10]
+speaker_id_path:  '/content/drive/MyDrive/jocko/text/speaker_ids.txt'
+dataloader:
+  batch_size: 8
+  shuffle: True
+  pin_memory: True
