@@ -25,7 +25,7 @@
 - Classes configs are automatically read so ensure to adjust before training to your desired paramters
 
 ## Limitations & Future work
-- Currently only supports 5 second audio clips sampled at 16000
+- Currently only supports 5 second audio clips sampled at 16000, (reasoning is that only 5 seconds should be needed to classify most sound bites)
 - In the future will support variable length audio clips 
 
 
