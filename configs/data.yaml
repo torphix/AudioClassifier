@@ -1,6 +1,6 @@
 wav_dir: '/home/j/Desktop/Programming/AI/DeepLearning/la_solitudine/data/datasets/lex_fridman/jocko_willink/audio'
 sample_rate: 16000 # Currentl only 16000 hertz supported
-max_wav_len: 5 # in seconds
+max_wav_len: 3 # in seconds
 # Audio features
 n_fft: 2048
 hop_length: 512

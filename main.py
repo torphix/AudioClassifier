@@ -1,7 +1,7 @@
 import os
 import sys
 import argparse
-from classifier import inference, train
+from classifier import inference, train, validate
 
 
 if __name__ == '__main__':
@@ -16,8 +16,16 @@ if __name__ == '__main__':
               f'{root_path}/configs/trainer.yaml')
 
     elif command == 'finetune':
-        pass
-
+        parser.add_argument('-pth', '--model_path', required=True,
+                            help='Path to pretrained model')
+        args, leftover_args = parser.parse_known_args()
+        root_path = os.path.abspath('.')
+        train(f'{root_path}/configs/module.yaml',
+              f'{root_path}/configs/model.yaml',
+              f'{root_path}/configs/data.yaml',
+              f'{root_path}/configs/trainer.yaml',
+              pretrained_path=args.model_path)
+        
     elif command == 'inference':
         parser.add_argument('-pth', '--model_path', required=True,
                             help='Path to pretrained model')
@@ -31,7 +39,16 @@ if __name__ == '__main__':
                 f'{root_path}/configs/module.yaml',
                 args.model_path,
                 args.wav_path)
-        print(output)
 
+    elif command == 'validate':
+        parser.add_argument('-pth', '--model_path', required=True,
+                            help='Path to pretrained model')
+        args, leftover_args = parser.parse_known_args()
+        root_path = os.path.abspath('.')
+        output = validate(
+                f'{root_path}/configs/model.yaml',
+                f'{root_path}/configs/data.yaml',
+                f'{root_path}/configs/module.yaml',
+                args.model_path)
 
 # TODO make mel spec hparams customizable and max len customaizable

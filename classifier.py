@@ -1,6 +1,5 @@
 import os
 import yaml
-import json
 import torch
 import librosa
 import numpy as np
@@ -8,12 +7,14 @@ import torch.nn as nn
 from datetime import datetime
 import pytorch_lightning as ptl
 import torch.nn.functional as F
+from utils import filter_incorrect
 from librosa.feature import melspectrogram
+from dataset import AudioClassificationDataset
 from torch.optim.lr_scheduler import ReduceLROnPlateau
-from torch.utils.data import DataLoader, Dataset, random_split
+from torch.utils.data import DataLoader, random_split
 
 
-class SpeechClassifier(nn.Module):
+class AudioClassifier(nn.Module):
     def __init__(self, config, n_classes):
         super().__init__()
         self.layers = nn.ModuleList()
@@ -26,9 +27,12 @@ class SpeechClassifier(nn.Module):
                     nn.ReLU(),
                     nn.BatchNorm1d(config['hid_sizes'][i+1])
                 ))
-        self.out_layer = nn.Linear(config['hid_sizes'][-1]*116,
+        self.out_layer = nn.Linear(6784,
                                    n_classes)
         self.layers = nn.Sequential(*self.layers)
+
+    def _calc_output_size(self, w, k, p, s):
+        return ((w-k+(2*p))/s) + 1
 
     def forward(self, wavs):
         x = self.layers(wavs)
@@ -36,66 +40,9 @@ class SpeechClassifier(nn.Module):
         x = x.view(BS, -1)
         x = self.out_layer(x)
         return x
-
-
-class SpeakerClassificationDataset(Dataset):
-    def __init__(self, config, n_classes):
-        super().__init__()
-        '''
-        Expects path to wav folder
-        & Text doc with wav ID + speaker ID
-        file_id|text|speaker_id
-        '''
-        self.wav_dir = config['wav_dir']
-        self.sample_rate = config['sample_rate']
-        self.max_wav_len = config['max_wav_len']
-        # Mel features
-        self.n_fft = config['n_fft']
-        self.hop_length = config['hop_length']
-        self.win_length = config['win_length']
-        self.n_classes = n_classes
-
-        # Get speaker IDS
-        with open(config['metadata_path'], 'r') as f:
-            lines = f.readlines()
-        self.speaker_ids = [line.split("|")[-1].strip('\n') for line in lines]
-        self.file_ids = [line.split("|")[0] for line in lines]
-
-        print(f'Number of speakers found: {len(set(self.speaker_ids))}')
-        # Assign each speaker to a key
-        self.speaker_keys = {speaker: i for i,
-                             speaker in enumerate(set(self.speaker_ids))}
-        assert n_classes == len(self.speaker_keys.values()), \
-            f"Differing desired number of classes {n_classes} & actual {len(self.speaker_keys)}"
-        with open(config['speaker_id_save_path'], 'w') as f:
-            f.write(json.dumps(self.speaker_keys))
-
-    def __len__(self):
-        return len(self.file_ids)
-
-    def __getitem__(self, idx):
-        wav_path = f'{self.wav_dir}/{self.file_ids[idx]}.wav'
-        wav, sr = librosa.load(wav_path,
-                               sr=self.sample_rate)
-        max_len = int(self.sample_rate * self.max_wav_len)
-        wav = torch.tensor(wav[:max_len])
-        if wav.shape[0] < max_len:
-            wav = F.pad(wav, (0, max_len-wav.shape[0]), value=0)
-        mel = melspectrogram(np.array(wav),
-                             sr=self.sample_rate,
-                             n_fft=self.n_fft,
-                             hop_length=self.hop_length,
-                             win_length=self.win_length)
-
-        speaker_id = torch.zeros((self.n_classes))
-        speaker_key = self.speaker_keys[self.speaker_ids[idx]]
-        speaker_id[speaker_key] = 1
-        mel = torch.tensor(mel)
-        mel = mel / torch.max(mel)
-        return mel, speaker_id
     
 
-class SpeechClassifierModule(ptl.LightningModule):
+class AudioClassifierModule(ptl.LightningModule):
     def __init__(self, module_config, model_config, data_config):
         super().__init__()
         with open(module_config, 'r') as f:
@@ -105,9 +52,8 @@ class SpeechClassifierModule(ptl.LightningModule):
         with open(data_config, 'r') as f:
             self.data_config = yaml.load(f.read(), Loader=yaml.FullLoader)
 
-        self.model = SpeechClassifier(model_config, 
-                                      self.module_config['n_classes'])
-        self.dataset = SpeakerClassificationDataset(self.data_config, 
+        self.model = AudioClassifier(model_config, self.module_config['n_classes'])
+        self.dataset = AudioClassificationDataset(self.data_config, 
                                                     self.module_config['n_classes'])
         self.train_ds, self.val_ds = random_split(self.dataset,
                                                   self.data_config['dataset_split'])
@@ -127,14 +73,14 @@ class SpeechClassifierModule(ptl.LightningModule):
         return outputs
 
     def training_step(self, batch, batch_idx):
-        wavs, targets = batch
+        wavs, targets, wav_ids = batch
         outputs = self.forward(wavs)
         outputs = F.softmax(outputs, dim=1)
         loss = F.cross_entropy(outputs, targets)
         return loss
 
     def validation_step(self, batch, batch_idx):
-        wavs, targets = batch
+        wavs, targets, wav_ids = batch
         outputs = self.forward(wavs)
         outputs = F.softmax(outputs, dim=1)
         loss = F.cross_entropy(outputs, targets)
@@ -153,9 +99,10 @@ def train(module_config,
           trainer_config,
           pretrained_path=None):
 
-    module = SpeechClassifierModule(
+    module = AudioClassifierModule(
         module_config, model_config, data_config)
     if pretrained_path is not None:
+        print('Loading from checkpoint')
         module.model.load_state_dict(torch.load(pretrained_path))
     with open(trainer_config, 'r') as f:
         trainer_config = yaml.load(f.read(), Loader=yaml.FullLoader)
@@ -166,7 +113,7 @@ def train(module_config,
     save_name = f'e{trainer_config["max_epochs"]}_classifer_{timestamp}.pth'
     torch.save(module.model.state_dict(),
                f'pretrained_models/{save_name}')
-
+    
 
 def inference(
         model_config,
@@ -180,7 +127,7 @@ def inference(
         data_config = yaml.load(f.read(), Loader=yaml.FullLoader)
     with open(module_config, 'r') as f:
         module_config = yaml.load(f.read(), Loader=yaml.FullLoader)
-    model = SpeechClassifier(model_config, module_config['n_classes'])
+    model = AudioClassifierModule(model_config, module_config['n_classes'])
     model.load_state_dict(torch.load(pretrained_path))
 
     wav, sr = librosa.load(wav_path,
@@ -196,3 +143,35 @@ def inference(
     output = model.forward(torch.tensor(mel).unsqueeze(0))
     output = F.softmax(output)
     return output
+
+
+def validate(
+        model_config,
+        data_config,
+        module_config,
+        pretrained_path):
+    '''
+    Iterates over entire dataset specified in data_config, returning
+    incorrect classifications & confusion matrix
+    '''
+    with open(model_config, 'r') as f:
+        model_config = yaml.load(f.read(), Loader=yaml.FullLoader)
+    with open(data_config, 'r') as f:
+        data_config = yaml.load(f.read(), Loader=yaml.FullLoader)
+    with open(module_config, 'r') as f:
+        module_config = yaml.load(f.read(), Loader=yaml.FullLoader)
+
+    dataset = AudioClassificationDataset(data_config, module_config['n_classes'])
+    dataloader = DataLoader(dataset, **data_config['dataloader'])
+    model = AudioClassifier(model_config, module_config['n_classes'])
+    model.load_state_dict(torch.load(pretrained_path))
+
+    for batch in dataloader:
+        mels, ids, wav_ids = batch[0], batch[1], batch[2]
+        outputs = model.forward(mels)
+        outputs = F.softmax(outputs)
+        incorrect = filter_incorrect(outputs, ids, wav_ids)
+        print(incorrect)
+    return incorrect
+
+
