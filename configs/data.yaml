@@ -1,0 +1,14 @@
+wav_dir: '/home/j/Desktop/Programming/AI/DeepLearning/la_solitudine/data/datasets/lex_fridman/jocko_willink/audio'
+sample_rate: 16000 # Currentl only 16000 hertz supported
+max_wav_len: 5 # in seconds
+# Audio features
+n_fft: 2048
+hop_length: 512
+win_length: 50
+metadata_path: '/home/j/Desktop/Programming/AI/DeepLearning/la_solitudine/data/datasets/lex_fridman/jocko_willink/text/jocko.txt'
+dataset_split:  [180,10]
+speaker_id_save_path:  '/home/j/Desktop/Programming/AI/DeepLearning/la_solitudine/data/datasets/lex_fridman/jocko_willink/textspeaker_ids.txt'
+dataloader:
+  batch_size: 8
+  shuffle: True
+  pin_memory: True

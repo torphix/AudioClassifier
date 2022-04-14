@@ -14,7 +14,7 @@ from torch.utils.data import DataLoader, Dataset, random_split
 
 
 class SpeechClassifier(nn.Module):
-    def __init__(self, config):
+    def __init__(self, config, n_classes):
         super().__init__()
         self.layers = nn.ModuleList()
         for i in range(len(config['k_sizes'])-1):
@@ -27,7 +27,7 @@ class SpeechClassifier(nn.Module):
                     nn.BatchNorm1d(config['hid_sizes'][i+1])
                 ))
         self.out_layer = nn.Linear(config['hid_sizes'][-1]*116,
-                                   config['n_classes'])
+                                   n_classes)
         self.layers = nn.Sequential(*self.layers)
 
     def forward(self, wavs):
@@ -39,7 +39,7 @@ class SpeechClassifier(nn.Module):
 
 
 class SpeakerClassificationDataset(Dataset):
-    def __init__(self, config):
+    def __init__(self, config, n_classes):
         super().__init__()
         '''
         Expects path to wav folder
@@ -49,7 +49,11 @@ class SpeakerClassificationDataset(Dataset):
         self.wav_dir = config['wav_dir']
         self.sample_rate = config['sample_rate']
         self.max_wav_len = config['max_wav_len']
-        self.n_classes = config['n_classes']
+        # Mel features
+        self.n_fft = config['n_fft']
+        self.hop_length = config['hop_length']
+        self.win_length = config['win_length']
+        self.n_classes = n_classes
 
         # Get speaker IDS
         with open(config['metadata_path'], 'r') as f:
@@ -61,9 +65,9 @@ class SpeakerClassificationDataset(Dataset):
         # Assign each speaker to a key
         self.speaker_keys = {speaker: i for i,
                              speaker in enumerate(set(self.speaker_ids))}
-        assert config['n_classes'] == len(self.speaker_keys.values()), \
-            f"Differing desired number of classes {config['n_classes']} & actual {len(self.speaker_keys)}"
-        with open(config['speaker_id_path'], 'w') as f:
+        assert n_classes == len(self.speaker_keys.values()), \
+            f"Differing desired number of classes {n_classes} & actual {len(self.speaker_keys)}"
+        with open(config['speaker_id_save_path'], 'w') as f:
             f.write(json.dumps(self.speaker_keys))
 
     def __len__(self):
@@ -73,14 +77,15 @@ class SpeakerClassificationDataset(Dataset):
         wav_path = f'{self.wav_dir}/{self.file_ids[idx]}.wav'
         wav, sr = librosa.load(wav_path,
                                sr=self.sample_rate)
-        wav = torch.tensor(wav[:self.max_wav_len])
-        if wav.shape[0] < self.max_wav_len:
-            wav = F.pad(wav, (0, self.max_wav_len-wav.shape[0]), value=0)
+        max_len = int(self.sample_rate * self.max_wav_len)
+        wav = torch.tensor(wav[:max_len])
+        if wav.shape[0] < max_len:
+            wav = F.pad(wav, (0, max_len-wav.shape[0]), value=0)
         mel = melspectrogram(np.array(wav),
                              sr=self.sample_rate,
-                             n_fft=2048,
-                             hop_length=512,
-                             win_length=50)
+                             n_fft=self.n_fft,
+                             hop_length=self.hop_length,
+                             win_length=self.win_length)
 
         speaker_id = torch.zeros((self.n_classes))
         speaker_key = self.speaker_keys[self.speaker_ids[idx]]
@@ -88,7 +93,6 @@ class SpeakerClassificationDataset(Dataset):
         mel = torch.tensor(mel)
         mel = mel / torch.max(mel)
         return mel, speaker_id
-
 
 class SpeechClassifierModule(ptl.LightningModule):
     def __init__(self, module_config, model_config, data_config):
@@ -99,11 +103,11 @@ class SpeechClassifierModule(ptl.LightningModule):
             model_config = yaml.load(f.read(), Loader=yaml.FullLoader)
         with open(data_config, 'r') as f:
             self.data_config = yaml.load(f.read(), Loader=yaml.FullLoader)
-        self.module_config = module_config
-        self.data_config = data_config
 
-        self.model = SpeechClassifier(model_config)
-        self.dataset = SpeakerClassificationDataset(self.data_config)
+        self.model = SpeechClassifier(model_config, 
+                                      self.module_config['n_classes'])
+        self.dataset = SpeakerClassificationDataset(self.data_config, 
+                                                    self.module_config['n_classes'])
         self.train_ds, self.val_ds = random_split(self.dataset,
                                                   self.data_config['dataset_split'])
 
@@ -137,7 +141,7 @@ class SpeechClassifierModule(ptl.LightningModule):
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(),
-                                     lr=self.module_config['learning_rate'])
+                                     lr=float(self.module_config['learning_rate']))
         return {'optimizer': optimizer,
                 'scheduler': ReduceLROnPlateau(optimizer)}
 

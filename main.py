@@ -1,6 +1,7 @@
+import os
 import sys
 import argparse
-from classifier import train
+from classifier import inference, train
 
 
 if __name__ == '__main__':
@@ -8,19 +9,21 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
     if command == 'train':
-        train('./configs/module_config.yaml',
-              './configs/model_config.yaml',
-              './configs/data_config.yaml',
-              './configs/trainer_config.yaml')
+        root_path = os.path.abspath('.')
+        train(f'{root_path}/configs/module.yaml',
+              f'{root_path}/configs/model.yaml',
+              f'{root_path}/configs/data.yaml',
+              f'{root_path}/configs/trainer.yaml')
 
     elif command == 'finetune':
         parser.add_argument('-pth', '--pretrained_path', required=True,
                             help='Path to pretrained model')
         args, leftover_args = parser.parse_known_args()
-        train('./configs/module_config.yaml',
-              './configs/model_config.yaml',
-              './configs/data_config.yaml',
-              './configs/trainer_config.yaml',
+        inference(
+              './configs/module.yaml',
+              './configs/model.yaml',
+              './configs/data.yaml',
+              './configs/trainer.yaml',
               args.pretrained_path)
 
     elif command == 'inference':

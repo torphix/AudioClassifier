@@ -1,2 +1,3 @@
-learning_rate: 2e-4
-n_classes: 2
+accumulate_grad_batches: 2
+max_epochs: 80
+min_epochs: 80
