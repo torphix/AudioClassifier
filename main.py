@@ -16,16 +16,22 @@ if __name__ == '__main__':
               f'{root_path}/configs/trainer.yaml')
 
     elif command == 'finetune':
-        parser.add_argument('-pth', '--pretrained_path', required=True,
-                            help='Path to pretrained model')
-        args, leftover_args = parser.parse_known_args()
-        inference(
-              './configs/module.yaml',
-              './configs/model.yaml',
-              './configs/data.yaml',
-              './configs/trainer.yaml',
-              args.pretrained_path)
+        pass
 
     elif command == 'inference':
-        pass
+        parser.add_argument('-pth', '--model_path', required=True,
+                            help='Path to pretrained model')
+        parser.add_argument('-wp', '--wav_path', required=True)
+        parser.add_argument('-sid', '--speaker_ids_path', required=False)
+        args, leftover_args = parser.parse_known_args()
+        root_path = os.path.abspath('.')
+        output = inference(
+                f'{root_path}/configs/model.yaml',
+                f'{root_path}/configs/data.yaml',
+                f'{root_path}/configs/module.yaml',
+                args.model_path,
+                args.wav_path)
+        print(output)
+
+
 # TODO make mel spec hparams customizable and max len customaizable

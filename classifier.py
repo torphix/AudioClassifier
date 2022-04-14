@@ -93,6 +93,7 @@ class SpeakerClassificationDataset(Dataset):
         mel = torch.tensor(mel)
         mel = mel / torch.max(mel)
         return mel, speaker_id
+    
 
 class SpeechClassifierModule(ptl.LightningModule):
     def __init__(self, module_config, model_config, data_config):
@@ -161,7 +162,7 @@ def train(module_config,
     trainer = ptl.Trainer(**trainer_config)
     trainer.fit(module)
     os.makedirs('pretrained_models', exist_ok=True)
-    timestamp = datetime.now().strftime("%d/%m/%y")
+    timestamp = datetime.now().strftime("%d-%m-%y")
     save_name = f'e{trainer_config["max_epochs"]}_classifer_{timestamp}.pth'
     torch.save(module.model.state_dict(),
                f'pretrained_models/{save_name}')
@@ -170,24 +171,28 @@ def train(module_config,
 def inference(
         model_config,
         data_config,
-        n_classes,
+        module_config,
         pretrained_path,
         wav_path):
     with open(model_config, 'r') as f:
         model_config = yaml.load(f.read(), Loader=yaml.FullLoader)
     with open(data_config, 'r') as f:
         data_config = yaml.load(f.read(), Loader=yaml.FullLoader)
-    model = SpeechClassifier(model_config, n_classes)
+    with open(module_config, 'r') as f:
+        module_config = yaml.load(f.read(), Loader=yaml.FullLoader)
+    model = SpeechClassifier(model_config, module_config['n_classes'])
     model.load_state_dict(torch.load(pretrained_path))
 
     wav, sr = librosa.load(wav_path,
                            sr=data_config['sample_rate'])
-    wav = torch.tensor(wav[:data_config['max_wav_len']])
-    wav = F.pad(wav, (0, data_config['max_wav_len']-wav.shape[0]), value=0)
+    max_len = int(data_config['max_wav_len'] * data_config['sample_rate'])
+    wav = torch.tensor(wav[:max_len])
+    wav = F.pad(wav, (0, max_len-wav.shape[0]), value=0)
     mel = melspectrogram(np.array(wav),
                          sr=data_config['sample_rate'],
                          n_fft=data_config['n_fft'],
                          hop_length=data_config['hop_length'],
                          win_length=data_config['win_length'])
-
-    model.forward
+    output = model.forward(torch.tensor(mel).unsqueeze(0))
+    output = F.softmax(output)
+    return output

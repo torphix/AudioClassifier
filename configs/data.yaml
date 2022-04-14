@@ -7,7 +7,7 @@ hop_length: 512
 win_length: 50
 metadata_path: '/home/j/Desktop/Programming/AI/DeepLearning/la_solitudine/data/datasets/lex_fridman/jocko_willink/text/jocko.txt'
 dataset_split:  [180,10]
-speaker_id_save_path:  '/home/j/Desktop/Programming/AI/DeepLearning/la_solitudine/data/datasets/lex_fridman/jocko_willink/textspeaker_ids.txt'
+speaker_id_save_path:  '/home/j/Desktop/Programming/AI/DeepLearning/la_solitudine/data/datasets/lex_fridman/jocko_willink/textspeaker_ids.json'
 dataloader:
   batch_size: 8
   shuffle: True
